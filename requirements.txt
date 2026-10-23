@@ -1,0 +1,5 @@
+# Core (already present in conda env ML): numpy scipy opencv-python torch pandas matplotlib scikit-learn
+# Extra, install into ML when needed:
+#   conda run -n ML pip install mediapipe h5py
+mediapipe        # 468-pt face mesh for forehead/cheek ROIs (Task 1 spec) and mask handling (C7)
+h5py             # some datasets ship HDF5

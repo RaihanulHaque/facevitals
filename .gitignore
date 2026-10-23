@@ -1,0 +1,12 @@
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+results/*
+!results/.gitkeep
+*.mp4
+*.avi
+*.mat
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store

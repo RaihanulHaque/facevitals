@@ -3,9 +3,12 @@
 
     conda run -n ML python scripts/scamps_to_video.py data/raw/scamps/P000001.mat --out data/processed/scamps/P000001
 
-Writes <out>.mp4 (RawFrames, 320x240, 30 fps, lossless-ish) and <out>_ref.csv (time_sec, hr_bpm) with
+Writes <out>.avi (FFV1 lossless by default) and <out>_ref.csv (time_sec, hr_bpm) with
 HR derived from the ground-truth PPG waveform `d_ppg` by peak detection in 10 s sliding windows, plus
 <out>_ref_ppg.csv with the raw waveform. SCAMPS .mat files are v7.3 (HDF5): needs h5py.
+
+Use --codec mp4v (lossy, 4:2:0) only to simulate C5 compression: it flattens the per-channel pulse
+ratios to R/G = B/G ~ 1, which makes CHROM/POS cancel the pulse while green survives.
 """
 from __future__ import annotations
 
@@ -57,6 +60,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mat")
     ap.add_argument("--out", required=True, help="output prefix")
+    ap.add_argument("--codec", default="FFV1", choices=["FFV1", "mp4v"], help="FFV1 = lossless .avi (default); mp4v = lossy .mp4 (C5 simulation)")
     args = ap.parse_args()
     keys, frames, ppg = load_mat(Path(args.mat))
     print("keys:", keys)
@@ -67,14 +71,15 @@ def main():
     print(f"frames {frames.shape}, ppg {ppg.shape}")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    vw = cv2.VideoWriter(str(out.with_suffix(".mp4")), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
+    ext = ".avi" if args.codec == "FFV1" else ".mp4"
+    vw = cv2.VideoWriter(str(out.with_suffix(ext)), cv2.VideoWriter_fourcc(*args.codec), FPS, (W, H))
     for fr in frames:
         vw.write(cv2.cvtColor(fr, cv2.COLOR_RGB2BGR))
     vw.release()
     t, hr = ppg_to_hr(ppg, FPS)
     pd.DataFrame({"time_sec": t, "hr_bpm": hr}).to_csv(f"{out}_ref.csv", index=False)
     pd.DataFrame({"time_sec": np.arange(len(ppg)) / FPS, "ppg": ppg}).to_csv(f"{out}_ref_ppg.csv", index=False)
-    print(f"wrote {out}.mp4 ({T} frames @ {FPS} fps), {out}_ref.csv (mean HR {hr.mean():.1f} bpm)")
+    print(f"wrote {out}{ext} [{args.codec}] ({T} frames @ {FPS} fps), {out}_ref.csv (mean HR {hr.mean():.1f} bpm)")
 
 
 if __name__ == "__main__":

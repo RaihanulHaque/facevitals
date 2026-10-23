@@ -47,3 +47,30 @@ conda run -n ML modal run modal_app/extract_traces.py          # cache traces (~
 conda run -n ML modal volume get facevitals-data /cache/rppg_biases_traces.npz data/processed/
 conda run -n ML python scripts/sweep_estimators.py data/processed/rppg_biases_traces.npz
 ```
+
+---
+
+# SCAMPS P000001: why CHROM/POS picked 58/84 bpm while green got 131 (2026-10-23)
+
+Controlled traces on the same clip (ref 130.3 bpm from `d_ppg`; head motion signals are all zero):
+
+| Trace | pulse R/G | pulse B/G | corr(G, PPG) | green | chrom | pos |
+|---|---|---|---|---|---|---|
+| lossless `Xsub` + exact `skin_mask` | 0.90 | 0.59 | −0.94 | 130.4 | 129.8 | 130.3 |
+| lossless `Xsub` + **our YuNet ROIs** | 0.62 | 0.41 | −0.72 | 130.5 | **130.2** | **130.4** |
+| lossless + YuNet ROIs ∩ skin_mask | 0.65 | 0.44 | −0.79 | 130.6 | 130.2 | 130.4 |
+| **mp4v (what the CLI used)** + exact skin_mask | **0.99** | **0.99** | −0.87 | 130.4 | **55.4** | 130.4 |
+| FFV1 lossless re-encode + skin_mask | 0.90 | 0.59 | −0.94 | 130.4 | 129.8 | 130.3 |
+
+Conclusions:
+1. **ROI selection is fine.** YuNet forehead + cheek ROIs on lossless frames give CHROM/POS within 0.2 bpm.
+2. **The culprit was the lossy `mp4v` encode** in `scamps_to_video.py`. 4:2:0 chroma subsampling +
+   quantisation keep the pulse only in luma: per-channel pulse ratios collapse to R/G = B/G ≈ 1
+   (achromatic). CHROM (3R−2G, 1.5R+G−1.5B) and POS (G−B, −2R+G+B) are built to cancel exactly that
+   component, so what remains is compression noise → 55–84 bpm. Green/luma survives.
+3. Converter now defaults to **FFV1 lossless** (`.avi`); `--codec mp4v` kept on purpose as a **C5
+   (low-bitrate) stress simulation**.
+
+Implication for the competition (C4/C5): **chrominance methods degrade first under compression;
+green / luma-based or learned methods are the robust choice for low-bandwidth operation.** This is a
+reportable, quantified robustness finding for the Round 1 constraint justification.

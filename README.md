@@ -32,7 +32,7 @@ OpenCV 5 (in env ML) has no Haar cascades; the pipeline uses **YuNet** (`models/
 conda run -n ML python scripts/scamps_to_video.py data/raw/scamps/P000001.mat --out data/processed/scamps/P000001
 ```
 ```bash
-conda run -n ML python scripts/run_hr_video.py data/processed/scamps/P000001.mp4 --method green --ref data/processed/scamps/P000001_ref.csv
+conda run -n ML python scripts/run_hr_video.py data/processed/scamps/P000001.avi --method pos --ref data/processed/scamps/P000001_ref.csv
 ```
 
 ## rppg_biases findings

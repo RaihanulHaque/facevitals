@@ -18,7 +18,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from facevitals.roi import extract_rgb_trace  # noqa: E402
-from facevitals.rppg import METHODS, estimate_hr_fft, hr_sliding_window  # noqa: E402
+from facevitals.rppg import METHODS, estimate_hr_welch, hr_sliding_window  # noqa: E402
 from facevitals.metrics import evaluate_hr  # noqa: E402
 
 
@@ -36,7 +36,7 @@ def main():
     rgb, fps, _ = extract_rgb_trace(args.video, args.max_frames)
     print(f"frames={len(rgb)} fps={fps:.2f} duration={len(rgb)/fps:.1f}s")
     pulse = METHODS[args.method](rgb, fps)
-    print(f"[{args.method}] whole-clip HR = {estimate_hr_fft(pulse, fps):.1f} bpm")
+    print(f"[{args.method}] clip HR (Welch 60 s, harmonic-scored) = {estimate_hr_welch(pulse, fps):.1f} bpm")
 
     t, hr = hr_sliding_window(pulse, fps, args.win, args.step)
     df = pd.DataFrame({"time_sec": t, "hr_bpm": hr})

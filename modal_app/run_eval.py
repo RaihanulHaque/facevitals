@@ -1,6 +1,6 @@
 """Run scripts/eval_rppg_biases.py on Modal against the `facevitals-data` volume.
 
-    conda run -n ML modal run modal_app/run_eval.py --roi forehead
+    conda run -n ML modal run modal_app/run_eval.py
 Writes results CSV back to the volume at /data/results/ and prints the metrics table.
 """
 from __future__ import annotations
@@ -22,18 +22,18 @@ image = (
 
 
 @app.function(image=image, volumes={"/data": vol}, cpu=4, timeout=60 * 60)
-def run(roi: str) -> str:
-    out = f"/data/results/rppg_biases_{roi}.csv"
+def run(tag: str) -> str:
+    out = f"/data/results/rppg_biases_{tag}.csv"
     Path("/data/results").mkdir(exist_ok=True)
     res = subprocess.run(
-        ["python", "/app/scripts/eval_rppg_biases.py", "/data/rppg_biases", "--roi", roi, "--out", out],
+        ["python", "/app/scripts/eval_rppg_biases.py", "/data/rppg_biases", "--out", out],
         capture_output=True, text=True, cwd="/app",
     )
     vol.commit()
-    tail = "\n".join(res.stdout.splitlines()[-12:])
+    tail = "\n".join(res.stdout.splitlines()[-40:])
     return tail + ("\nSTDERR:\n" + res.stderr[-2000:] if res.returncode else "")
 
 
 @app.local_entrypoint()
-def main(roi: str = "forehead"):
-    print(run.remote(roi))
+def main(tag: str = "fused"):
+    print(run.remote(tag))

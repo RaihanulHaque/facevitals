@@ -24,11 +24,26 @@ Datasets live in Modal Volume **`facevitals-data`** (personal workspace `raihanu
 conda run -n ML modal run modal_app/setup_data.py
 ```
 
+## Face detector
+OpenCV 5 (in env ML) has no Haar cascades; the pipeline uses **YuNet** (`models/face_detection_yunet_2023mar.onnx`, from opencv_zoo, 230 KB, committed). Gives a box + 5 landmarks → forehead / cheek ROIs.
+
+## End-to-end test on a synthetic SCAMPS clip
+```bash
+conda run -n ML python scripts/scamps_to_video.py data/raw/scamps/P000001.mat --out data/processed/scamps/P000001
+```
+```bash
+conda run -n ML python scripts/run_hr_video.py data/processed/scamps/P000001.mp4 --method green --ref data/processed/scamps/P000001_ref.csv
+```
+
+## rppg_biases findings
+See [docs/rppg_biases_findings.md](docs/rppg_biases_findings.md): dataset is SNR-limited (authors' own r≈0); our default estimator is now green + 60 s Welch + harmonic-scored peak (bias −2 bpm, was +23).
+
 ## Layout
 ```
 src/facevitals/   roi.py (face ROI), rppg.py (GREEN/CHROM/POS + FFT HR), metrics.py (MAE/RMSE/r/Bland-Altman)
-scripts/          run_hr_video.py (Round 1 CLI), synthetic_check.py (pipeline sanity test), eval_rppg_biases.py
-modal_app/        setup_data.py (fills the Modal volume), README.md
+scripts/          run_hr_video.py (Round 1 CLI), synthetic_check.py, eval_rppg_biases.py, sweep_estimators.py, scamps_to_video.py
+models/           YuNet face-detector ONNX
+modal_app/        setup_data.py (fills the volume), extract_traces.py (caches RGB traces), run_eval.py, README.md
 docs/             problem statement summary, resources, official PDF
 data/raw          put datasets here (git-ignored)
 results/          outputs (git-ignored)

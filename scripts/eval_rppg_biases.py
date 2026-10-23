@@ -5,8 +5,13 @@ Expects the dataset root (local copy or Modal-mounted /data/rppg_biases):
     <root>/Data/{India,Sierra_Leone}/video<N>_{forehead,leftcheek,rightcheek}.avi
     <root>/Ground_Truth/{India_GT,Sierra_Leone_GT}.csv
 
+Ground truth is the MEAN HR over the whole recording (15 fps, 30 s to 9 min), so the estimator is
+clip-level: spectra of the three ROI pulse signals are normalised and summed, then peak-picked.
+Estimators per method: plain full-clip FFT peak, and harmonic-scored (P(f)+P(2f)) peaks on the
+full-clip FFT, on a 60 s Welch spectrum, and as the median over 60 s windows (drift-tolerant).
+
 Usage:
-    conda run -n ML python scripts/eval_rppg_biases.py data/raw/rppg_biases --roi forehead
+    conda run -n ML python scripts/eval_rppg_biases.py data/raw/rppg_biases
 """
 from __future__ import annotations
 
@@ -19,8 +24,10 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from facevitals.rppg import METHODS, hr_sliding_window  # noqa: E402
+from facevitals.rppg import METHODS, fused_hr_fft, fused_hr_welch, fused_hr_windowed  # noqa: E402
 from facevitals.metrics import evaluate_hr  # noqa: E402
+
+ROIS = ["forehead", "leftcheek", "rightcheek"]
 
 
 def video_mean_rgb(path: Path):
@@ -46,47 +53,52 @@ def load_gt(root: Path, country: str) -> pd.DataFrame:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root")
-    ap.add_argument("--roi", choices=["forehead", "leftcheek", "rightcheek"], default="forehead")
     ap.add_argument("--out", default="results/rppg_biases_eval.csv")
-    ap.add_argument("--win", type=float, default=10.0, help="window length (s) for HR estimates")
-    ap.add_argument("--step", type=float, default=2.0)
+    ap.add_argument("--welch-win", type=float, default=60.0)
     args = ap.parse_args()
     root = Path(args.root)
 
     rows = []
     for country in ["India", "Sierra_Leone"]:
         gt = load_gt(root, country)
-        print(f"{country}: GT columns = {list(gt.columns)}")
-        # first column = video id/name, second = mean HR (verify once data is present)
         id_col, hr_col = gt.columns[0], gt.columns[1]
         for _, r in gt.iterrows():
             vid = str(r[id_col]).strip()
             if not vid.startswith("video"):
                 vid = f"video{int(vid)}"
-            path = root / "Data" / country / f"{vid}_{args.roi}.avi"
-            if not path.exists():
-                print(f"missing {path}")
+            traces = {}
+            for roi in ROIS:
+                path = root / "Data" / country / f"{vid}_{roi}.avi"
+                if path.exists():
+                    rgb, fps = video_mean_rgb(path)
+                    if len(rgb) >= 10 * fps:
+                        traces[roi] = rgb
+            if not traces:
+                print(f"missing/short {country}/{vid}")
                 continue
-            rgb, fps = video_mean_rgb(path)
-            if len(rgb) < 5 * fps:
-                continue
-            row = {"country": country, "video": vid, "fps": fps, "frames": len(rgb), "ref_hr": float(r[hr_col])}
+            n = min(len(t) for t in traces.values())
+            row = {"country": country, "video": vid, "fps": fps, "frames": n, "n_rois": len(traces), "ref_hr": float(r[hr_col])}
             for name, fn in METHODS.items():
-                # long clips (up to ~9 min @ 15 fps): median of 10 s window estimates, not one global FFT peak
-                _, hr_w = hr_sliding_window(fn(rgb, fps), fps, win_sec=args.win, step_sec=args.step)
-                row[f"hr_{name}"] = float(np.nanmedian(hr_w)) if len(hr_w) else float("nan")
+                pulses = [fn(t[:n], fps) for t in traces.values()]
+                row[f"{name}_fft"] = fused_hr_fft(pulses, fps)
+                row[f"{name}_fft_h"] = fused_hr_fft(pulses, fps, harmonic=0.5)
+                row[f"{name}_welch_h"] = fused_hr_welch(pulses, fps, win_sec=args.welch_win, harmonic=0.5)
+                row[f"{name}_win_h"] = fused_hr_windowed(pulses, fps, win_sec=args.welch_win, harmonic=0.5)
             rows.append(row)
-            print(row)
+            print({k: (round(v, 1) if isinstance(v, float) else v) for k, v in row.items()})
 
     df = pd.DataFrame(rows)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.out, index=False)
     print(f"\nwrote {args.out}  (n={len(df)})\n")
-    for name in METHODS:
+    est_cols = [c for c in df.columns if c.endswith(("_fft", "_fft_h", "_welch_h", "_win_h"))]
+    df["const_mean"] = df["ref_hr"].mean()  # trivial baseline: GT spread is small on this dataset
+    est_cols.append("const_mean")
+    for col in est_cols:
         for country, sub in list(df.groupby("country")) + [("ALL", df)]:
-            m = evaluate_hr(sub[f"hr_{name}"].values, sub["ref_hr"].values)
-            print(f"{name:6s} {country:13s} n={m['n']:3d} MAE={m['MAE_bpm']:5.2f} RMSE={m['RMSE_bpm']:5.2f} r={m['pearson_r']:5.2f} "
-                  f"BA=[{m['BA_LoA_lower_bpm']:6.1f},{m['BA_LoA_upper_bpm']:6.1f}]")
+            m = evaluate_hr(sub[col].values, sub["ref_hr"].values)
+            print(f"{col:22s} {country:13s} n={m['n']:3d} MAE={m['MAE_bpm']:5.2f} RMSE={m['RMSE_bpm']:5.2f} r={m['pearson_r']:5.2f} "
+                  f"bias={m['BA_bias_bpm']:6.2f} LoA=[{m['BA_LoA_lower_bpm']:6.1f},{m['BA_LoA_upper_bpm']:6.1f}]")
 
 
 if __name__ == "__main__":

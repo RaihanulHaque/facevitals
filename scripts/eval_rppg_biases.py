@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from facevitals.rppg import METHODS, estimate_hr_fft  # noqa: E402
+from facevitals.rppg import METHODS, hr_sliding_window  # noqa: E402
 from facevitals.metrics import evaluate_hr  # noqa: E402
 
 
@@ -48,6 +48,8 @@ def main():
     ap.add_argument("root")
     ap.add_argument("--roi", choices=["forehead", "leftcheek", "rightcheek"], default="forehead")
     ap.add_argument("--out", default="results/rppg_biases_eval.csv")
+    ap.add_argument("--win", type=float, default=10.0, help="window length (s) for HR estimates")
+    ap.add_argument("--step", type=float, default=2.0)
     args = ap.parse_args()
     root = Path(args.root)
 
@@ -70,7 +72,9 @@ def main():
                 continue
             row = {"country": country, "video": vid, "fps": fps, "frames": len(rgb), "ref_hr": float(r[hr_col])}
             for name, fn in METHODS.items():
-                row[f"hr_{name}"] = estimate_hr_fft(fn(rgb, fps), fps)
+                # long clips (up to ~9 min @ 15 fps): median of 10 s window estimates, not one global FFT peak
+                _, hr_w = hr_sliding_window(fn(rgb, fps), fps, win_sec=args.win, step_sec=args.step)
+                row[f"hr_{name}"] = float(np.nanmedian(hr_w)) if len(hr_w) else float("nan")
             rows.append(row)
             print(row)
 

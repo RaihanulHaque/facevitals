@@ -18,10 +18,17 @@ conda run -n ML python scripts/synthetic_check.py
 conda run -n ML python scripts/run_hr_video.py data/raw/some_video.mp4 --method pos --out results/hr.csv
 ```
 
+## Data on Modal
+Datasets live in Modal Volume **`facevitals-data`** (personal workspace `raihanulhaque007`), mounted at `/data`. See [modal_app/README.md](modal_app/README.md).
+```bash
+conda run -n ML modal run modal_app/setup_data.py
+```
+
 ## Layout
 ```
 src/facevitals/   roi.py (face ROI), rppg.py (GREEN/CHROM/POS + FFT HR), metrics.py (MAE/RMSE/r/Bland-Altman)
-scripts/          run_hr_video.py (Round 1 CLI), synthetic_check.py (pipeline sanity test)
+scripts/          run_hr_video.py (Round 1 CLI), synthetic_check.py (pipeline sanity test), eval_rppg_biases.py
+modal_app/        setup_data.py (fills the Modal volume), README.md
 docs/             problem statement summary, resources, official PDF
 data/raw          put datasets here (git-ignored)
 results/          outputs (git-ignored)

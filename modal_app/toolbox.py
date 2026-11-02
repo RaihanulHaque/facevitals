@@ -74,7 +74,7 @@ def _run(config, data_path, tag, train, model_path, extra):
         d["DATA_PATH"] = data_path if section in ("TEST", "UNSUPERVISED") or extra.get("train_path") is None else extra["train_path"]
         d["CACHED_PATH"] = f"/data/toolbox_cache/{ds}"
         Path(d["CACHED_PATH"]).mkdir(parents=True, exist_ok=True)
-        d["DO_PREPROCESS"] = not any(Path(d["CACHED_PATH"]).glob("*/*.npy"))
+        d["DO_PREPROCESS"] = bool(extra.get("preprocess", True))  # toolbox caches per preprocessing variant; re-run unless told not to
         d["EXP_DATA_NAME"] = ""
         for k, v in extra.get("data", {}).items():
             d[k] = v
@@ -86,7 +86,8 @@ def _run(config, data_path, tag, train, model_path, extra):
         cfg.setdefault("INFERENCE", {})["MODEL_PATH"] = model_path
     if "MODEL" in cfg:
         cfg["MODEL"]["MODEL_DIR"] = str(run_dir / "PreTrainedModels")
-    cfg["DEVICE"] = "cuda:0" if os.environ.get("CUDA_VISIBLE_DEVICES") or Path("/dev/nvidia0").exists() else "cpu"
+    cfg["DEVICE"] = "cuda:0" if extra.get("gpu") else "cpu"
+    cfg["NUM_OF_GPU_TRAIN"] = 1 if extra.get("gpu") else 0
     cfg_path = run_dir / "config.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     print(cfg_path.read_text(), flush=True)
@@ -102,8 +103,8 @@ def _run(config, data_path, tag, train, model_path, extra):
 
 
 @app.local_entrypoint()
-def main(config: str, data_path: str, tag: str = "run", gpu: bool = False, train: bool = False, model_path: str = None, train_path: str = None, fs: int = None, dataset: str = None):
-    extra = {"train_path": train_path, "data": {}, "dataset": dataset}
+def main(config: str, data_path: str, tag: str = "run", gpu: bool = False, train: bool = False, model_path: str = None, train_path: str = None, fs: int = None, dataset: str = None, no_preprocess: bool = False):
+    extra = {"train_path": train_path, "data": {}, "dataset": dataset, "preprocess": not no_preprocess, "gpu": gpu}
     if fs:
         extra["data"]["FS"] = fs
     fn = run_gpu if gpu else run_cpu

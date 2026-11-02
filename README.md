@@ -35,15 +35,30 @@ conda run -n ML python scripts/scamps_to_video.py data/raw/scamps/P000001.mat --
 conda run -n ML python scripts/run_hr_video.py data/processed/scamps/P000001.avi --method pos --ref data/processed/scamps/P000001_ref.csv
 ```
 
+## Live webcam demo (Mac)
+```bash
+conda run -n ML python scripts/webcam_hr.py --method green
+```
+```bash
+conda run -n ML python scripts/webcam_hr.py --method pos --model models/trained/tscan_scamps300_ep5.pth
+```
+Keys: `q` quit, `r` reset, `1/2/3` = green/chrom/pos. HR appears after 12 s of face. Good light, sit still, 40–60 cm. First run asks for camera permission for your terminal app.
+The `.pth` is not in git (download: `conda run -n ML modal volume get facevitals-data /toolbox_runs/SCAMPS_SCAMPS_UBFC-rPPG_TSCAN_BASIC_scamps300/PreTrainedModels/SCAMPS_SCAMPS_UBFC_tscan_Epoch4.pth models/trained/tscan_scamps300_ep5.pth`).
+
+## Training / evaluation with rPPG-Toolbox on Modal
+`modal_app/toolbox.py` runs the toolbox against the volume (unsupervised, pretrained `only_test`, or `train_and_test`). See its docstring. Results and weights land in `/data/toolbox_runs/<config>_<tag>/`.
+Datasets on the volume: `/data/scamps/videos` (300 clips), `/data/scamps/example` (10), `/data/rppg_biases`, `/data/UBFC-rPPG` (partial; Drive quota, resumable with `modal_app/fetch_ubfc.py`).
+Dataset access status + request email drafts: [docs/dataset_requests.md](docs/dataset_requests.md).
+
 ## rppg_biases findings
 See [docs/rppg_biases_findings.md](docs/rppg_biases_findings.md): dataset is SNR-limited (authors' own r≈0); our default estimator is now green + 60 s Welch + harmonic-scored peak (bias −2 bpm, was +23).
 
 ## Layout
 ```
-src/facevitals/   roi.py (face ROI), rppg.py (GREEN/CHROM/POS + FFT HR), metrics.py (MAE/RMSE/r/Bland-Altman)
-scripts/          run_hr_video.py (Round 1 CLI), synthetic_check.py, eval_rppg_biases.py, sweep_estimators.py, scamps_to_video.py
+src/facevitals/   roi.py (YuNet face ROI), rppg.py (GREEN/CHROM/POS + harmonic HR), metrics.py, models/ts_can.py (vendored, RAIL license)
+scripts/          run_hr_video.py (Round 1 CLI), webcam_hr.py (live demo), synthetic_check.py, eval_rppg_biases.py, sweep_estimators.py, scamps_to_video.py
 models/           YuNet face-detector ONNX
-modal_app/        setup_data.py (fills the volume), extract_traces.py (caches RGB traces), run_eval.py, README.md
+modal_app/        setup_data.py, fetch_ubfc.py, scamps_slice.py, extract_traces.py, run_eval.py, toolbox.py (rPPG-Toolbox runner), pretrained_rppg_biases.py
 docs/             problem statement summary, resources, official PDF
 data/raw          put datasets here (git-ignored)
 results/          outputs (git-ignored)

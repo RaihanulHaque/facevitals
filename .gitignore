@@ -15,3 +15,4 @@ data/raw/rppg_biases/*
 !data/raw/rppg_biases/Ground_Truth/
 data/processed/*
 !data/processed/.gitkeep
+models/trained/*.pth

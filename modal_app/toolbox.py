@@ -5,6 +5,10 @@
     conda run -n ML modal run modal_app/toolbox.py --config SCAMPS_UBFC-rPPG_TSCAN_BASIC --data-path /data/UBFC-rPPG/DATASET_2 --gpu
     conda run -n ML modal run modal_app/toolbox.py --config SCAMPS_UBFC-rPPG_TSCAN_BASIC --data-path /data/UBFC-rPPG/DATASET_2 --gpu --model-path /data/toolbox_runs/<run>/PreTrainedModels/..pth
 
+Train on one dataset split by fractions (SCAMPS 300-clip slice, 5 quick epochs):
+    conda run -n ML modal run modal_app/toolbox.py --train --config SCAMPS_SCAMPS_UBFC-rPPG_TSCAN_BASIC --dataset SCAMPS \
+        --data-path /data/scamps/videos --train-path /data/scamps/videos --train-range 0:0.8 --valid-range 0.8:0.9 --test-range 0.9:1 --epochs 5 --gpu --tag scamps300
+
 `--config` names a file in the toolbox's configs/infer_configs (or train_configs with --train). The runner
 rewrites DATA_PATH / CACHED_PATH / LOG path into the volume, sets DO_PREPROCESS when the cache is empty,
 and copies the toolbox's output CSVs + logs to /data/toolbox_runs/<config>_<tag>/.
@@ -72,6 +76,9 @@ def _run(config, data_path, tag, train, model_path, extra):
             d["DATASET"] = extra["dataset"]
         ds = d["DATASET"]
         d["DATA_PATH"] = data_path if section in ("TEST", "UNSUPERVISED") or extra.get("train_path") is None else extra["train_path"]
+        rng = (extra.get("ranges") or {}).get(section)
+        if rng:
+            d["BEGIN"], d["END"] = rng
         d["CACHED_PATH"] = f"/data/toolbox_cache/{ds}"
         Path(d["CACHED_PATH"]).mkdir(parents=True, exist_ok=True)
         d["DO_PREPROCESS"] = bool(extra.get("preprocess", True))  # toolbox caches per preprocessing variant; re-run unless told not to
@@ -86,6 +93,10 @@ def _run(config, data_path, tag, train, model_path, extra):
         cfg.setdefault("INFERENCE", {})["MODEL_PATH"] = model_path
     if "MODEL" in cfg:
         cfg["MODEL"]["MODEL_DIR"] = str(run_dir / "PreTrainedModels")
+    if extra.get("epochs") and "TRAIN" in cfg:
+        cfg["TRAIN"]["EPOCHS"] = int(extra["epochs"])
+    if extra.get("batch") and "TRAIN" in cfg:
+        cfg["TRAIN"]["BATCH_SIZE"] = int(extra["batch"])
     cfg["DEVICE"] = "cuda:0" if extra.get("gpu") else "cpu"
     cfg["NUM_OF_GPU_TRAIN"] = 1 if extra.get("gpu") else 0
     cfg_path = run_dir / "config.yaml"
@@ -103,8 +114,17 @@ def _run(config, data_path, tag, train, model_path, extra):
 
 
 @app.local_entrypoint()
-def main(config: str, data_path: str, tag: str = "run", gpu: bool = False, train: bool = False, model_path: str = None, train_path: str = None, fs: int = None, dataset: str = None, no_preprocess: bool = False):
-    extra = {"train_path": train_path, "data": {}, "dataset": dataset, "preprocess": not no_preprocess, "gpu": gpu}
+def main(config: str, data_path: str, tag: str = "run", gpu: bool = False, train: bool = False, model_path: str = None,
+         train_path: str = None, fs: int = None, dataset: str = None, no_preprocess: bool = False,
+         train_range: str = None, valid_range: str = None, test_range: str = None, epochs: int = None, batch: int = None):
+    """train_range/valid_range/test_range: "0:0.8" style fractions of the file list, for single-dataset splits."""
+    ranges = {}
+    for sec, r in (("TRAIN", train_range), ("VALID", valid_range), ("TEST", test_range)):
+        if r:
+            a, b = r.split(":")
+            ranges[sec] = (float(a), float(b))
+    extra = {"train_path": train_path, "data": {}, "dataset": dataset, "preprocess": not no_preprocess, "gpu": gpu,
+             "ranges": ranges, "epochs": epochs, "batch": batch}
     if fs:
         extra["data"]["FS"] = fs
     fn = run_gpu if gpu else run_cpu
